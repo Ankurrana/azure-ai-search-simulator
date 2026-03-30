@@ -54,8 +54,9 @@ public class SearchService : ISearchService
             throw new KeyNotFoundException($"Index '{indexName}' not found");
         }
 
-        // Ensure Lucene uses the correct similarity algorithm from the index definition
+        // Ensure Lucene uses the correct similarity and analyzers from the index definition
         _indexManager.ConfigureSimilarity(indexName, index.Similarity);
+        _indexManager.ConfigureAnalyzers(indexName, index);
 
         var response = new SearchResponse
         {
@@ -1060,8 +1061,9 @@ public class SearchService : ISearchService
             throw new KeyNotFoundException($"Index '{indexName}' not found");
         }
 
-        // Ensure Lucene uses the correct similarity algorithm from the index definition
+        // Ensure Lucene uses the correct similarity and analyzers from the index definition
         _indexManager.ConfigureSimilarity(indexName, index.Similarity);
+        _indexManager.ConfigureAnalyzers(indexName, index);
 
         var response = new SuggestResponse
         {
@@ -1127,8 +1129,9 @@ public class SearchService : ISearchService
             throw new KeyNotFoundException($"Index '{indexName}' not found");
         }
 
-        // Ensure Lucene uses the correct similarity algorithm from the index definition
+        // Ensure Lucene uses the correct similarity and analyzers from the index definition
         _indexManager.ConfigureSimilarity(indexName, index.Similarity);
+        _indexManager.ConfigureAnalyzers(indexName, index);
 
         var response = new AutocompleteResponse
         {

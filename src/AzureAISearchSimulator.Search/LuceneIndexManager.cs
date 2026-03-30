@@ -9,6 +9,7 @@ using AzureAISearchSimulator.Core.Configuration;
 using AzureAISearchSimulator.Core.Models;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
+using Lucene.Net.Analysis.Miscellaneous;
 
 namespace AzureAISearchSimulator.Search;
 
@@ -21,6 +22,7 @@ public class LuceneIndexManager : IDisposable
     private readonly LuceneSettings _settings;
     private readonly ConcurrentDictionary<string, IndexHolder> _indexes = new();
     private readonly ConcurrentDictionary<string, SimilarityAlgorithm> _similarityConfigs = new();
+    private readonly ConcurrentDictionary<string, SearchIndex> _indexSchemas = new();
     private readonly object _lock = new();
     private bool _disposed;
 
@@ -69,6 +71,34 @@ public class LuceneIndexManager : IDisposable
     }
 
     /// <summary>
+    /// Configures the custom analyzers for the specified index based on its schema.
+    /// If the index holder already exists and was created without custom analyzers, it is rebuilt.
+    /// This should be called before GetWriter/GetSearcher when the index definition is available.
+    /// </summary>
+    public void ConfigureAnalyzers(string indexName, SearchIndex schema)
+    {
+        ThrowIfDisposed();
+
+        var hadSchema = _indexSchemas.ContainsKey(indexName);
+        _indexSchemas[indexName] = schema;
+
+        // If the holder exists but was created without analyzer info, rebuild it
+        if (_indexes.ContainsKey(indexName) && !hadSchema)
+        {
+            lock (_lock)
+            {
+                if (_indexes.TryRemove(indexName, out var oldHolder))
+                {
+                    _logger.LogInformation(
+                        "Custom analyzer configuration applied for {IndexName}, rebuilding index holder",
+                        indexName);
+                    oldHolder.Dispose();
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Gets or creates an IndexWriter for the specified index.
     /// </summary>
     public IndexWriter GetWriter(string indexName)
@@ -99,12 +129,13 @@ public class LuceneIndexManager : IDisposable
     }
 
     /// <summary>
-    /// Gets the analyzer for the specified index.
+    /// Gets the search-time analyzer for the specified index.
+    /// Returns a PerFieldAnalyzerWrapper if custom analyzers are configured.
     /// </summary>
     public Analyzer GetAnalyzer(string indexName)
     {
         var holder = GetOrCreateHolder(indexName);
-        return holder.Analyzer;
+        return holder.SearchAnalyzer;
     }
 
     /// <summary>
@@ -233,7 +264,17 @@ public class LuceneIndexManager : IDisposable
         {
             _logger.LogInformation("Creating Lucene index holder for {IndexName}", name);
             var similarity = _similarityConfigs.GetValueOrDefault(name);
-            return new IndexHolder(name, GetIndexPath(name), similarity, _logger);
+            var schema = _indexSchemas.GetValueOrDefault(name);
+
+            Analyzer? indexAnalyzer = null;
+            Analyzer? searchAnalyzer = null;
+            if (schema != null)
+            {
+                indexAnalyzer = CustomAnalyzerFactory.BuildPerFieldAnalyzer(schema, forSearch: false);
+                searchAnalyzer = CustomAnalyzerFactory.BuildPerFieldAnalyzer(schema, forSearch: true);
+            }
+
+            return new IndexHolder(name, GetIndexPath(name), similarity, indexAnalyzer, searchAnalyzer, _logger);
         });
     }
 
@@ -278,6 +319,7 @@ public class LuceneIndexManager : IDisposable
 
         public Lucene.Net.Store.Directory Directory { get; }
         public Analyzer Analyzer { get; }
+        public Analyzer SearchAnalyzer { get; }
         public IndexWriter Writer { get; }
         public Similarity LuceneSimilarity { get; }
 
@@ -293,7 +335,8 @@ public class LuceneIndexManager : IDisposable
             }
         }
 
-        public IndexHolder(string indexName, string indexPath, SimilarityAlgorithm? similarity, ILogger logger)
+        public IndexHolder(string indexName, string indexPath, SimilarityAlgorithm? similarity,
+            Analyzer? indexAnalyzer, Analyzer? searchAnalyzer, ILogger logger)
         {
             _logger = logger;
             _indexName = indexName;
@@ -303,9 +346,10 @@ public class LuceneIndexManager : IDisposable
 
             // Use FSDirectory for persistence
             Directory = FSDirectory.Open(indexPath);
-            
-            // Standard analyzer for text processing
-            Analyzer = new StandardAnalyzer(LuceneDocumentMapper.AppLuceneVersion);
+
+            // Use provided analyzer or fall back to StandardAnalyzer
+            Analyzer = indexAnalyzer ?? new StandardAnalyzer(LuceneDocumentMapper.AppLuceneVersion);
+            SearchAnalyzer = searchAnalyzer ?? Analyzer;
 
             // Create the Lucene similarity from the index definition
             LuceneSimilarity = CreateLuceneSimilarity(similarity);
@@ -317,10 +361,10 @@ public class LuceneIndexManager : IDisposable
             };
 
             Writer = new IndexWriter(Directory, config);
-            
+
             _logger.LogDebug(
-                "Created IndexWriter for {IndexName} at {Path} with similarity {SimilarityType}",
-                indexName, indexPath, LuceneSimilarity.GetType().Name);
+                "Created IndexWriter for {IndexName} at {Path} with similarity {SimilarityType}, analyzer {AnalyzerType}",
+                indexName, indexPath, LuceneSimilarity.GetType().Name, Analyzer.GetType().Name);
         }
 
         public void RefreshReader()
@@ -364,6 +408,10 @@ public class LuceneIndexManager : IDisposable
                 _reader?.Dispose();
                 Writer.Dispose();
                 Analyzer.Dispose();
+                if (!ReferenceEquals(SearchAnalyzer, Analyzer))
+                {
+                    SearchAnalyzer.Dispose();
+                }
                 Directory.Dispose();
             }
             catch (Exception ex)

@@ -293,6 +293,7 @@ public class CustomAnalyzer
 
 /// <summary>
 /// Custom tokenizer definition.
+/// Uses JsonExtensionData to capture type-specific properties.
 /// </summary>
 public class CustomTokenizer
 {
@@ -301,10 +302,14 @@ public class CustomTokenizer
 
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Properties { get; set; }
 }
 
 /// <summary>
 /// Custom token filter definition.
+/// Uses JsonExtensionData to capture type-specific properties (e.g., "language" for StemmerTokenFilter).
 /// </summary>
 public class CustomTokenFilter
 {
@@ -313,6 +318,13 @@ public class CustomTokenFilter
 
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Captures additional properties specific to each token filter type
+    /// (e.g., "language" for StemmerTokenFilter, "pattern" for PatternReplaceTokenFilter).
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Properties { get; set; }
 }
 
 /// <summary>
