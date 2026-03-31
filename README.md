@@ -51,6 +51,7 @@ The Azure AI Search Simulator provides a local implementation of the Azure AI Se
 - **Synonym Maps**: CRUD management, Solr format, query-time synonym expansion
 - **Scoring Profiles**: Text weights, freshness, magnitude, distance, and tag functions with interpolation and aggregation modes
 - **Similarity Algorithms**: Configurable BM25 (k1/b parameters) and ClassicSimilarity (TF-IDF). Per-index similarity with `@search.features` support
+- **Custom Analyzers**: Define custom analyzers with configurable tokenizers (whitespace, standard, keyword, etc.) and token filter chains (lowercase, word_delimiter, stemmer, n-gram, etc.). Per-field analyzer assignment with support for separate index-time and search-time analyzers
 
 ### 🔜 Planned (Future Phases)
 
@@ -615,6 +616,7 @@ AzureAISearchSimulator/
 | Entra ID Authentication | ✅ | ✅ |
 | Scoring Profiles | ✅ | ✅ |
 | Similarity Algorithms | ✅ (BM25, Classic) | ✅ (BM25, Classic) |
+| Custom Analyzers | ✅ | ✅ (tokenizers, token filters, per-field) |
 | Scale (millions of docs) | ✅ | Limited |
 
 ### Skills Support
